@@ -5,6 +5,11 @@ from openpyxl.workbook import Workbook
 
 COUNT_CLASS: int = 2
 COUNT_FEATURE_INTO_CLASS: int = 6
+
+# TODO: Может упасть если COUNT_CATEGORICAL_FEATURES_START == 1
+COUNT_CATEGORICAL_FEATURES_START: int = 10
+COUNT_CATEGORICAL_FEATURES_END: int = 20
+
 COUNT_CHPD_START: int = 2
 COUNT_CHPD_END: int = 5
 
@@ -38,7 +43,6 @@ for class_name in classesList:
         feature: random.randint(COUNT_CHPD_START, COUNT_CHPD_END) for feature in featuresList
     }
     amountPeriodDynamicsForFeaturesInClassMap[class_name] = amountPeriodDynamicsForFeaturesMap
-
 invertedTypesFeaturesMap = {v: k for k, features in typesFeaturesMap.items() for v in features}
 
 # {'Признак1': (1, 4), 'Признак2': ['v0', 'v1', 'v2', 'v3', 'v4'], 'Признак3': [0, 1], ... }
@@ -57,11 +61,7 @@ for feature in featuresList:
         b = random.randint(1, a - value)
         possibleValuesForFeaturesMap[feature] = (b, a + COUNT_CHPD_END + 150)
     elif feature_type == 'Категориальный':
-        # Генерируем list из элементов v{i} рандомной длинны, не меньшей,
-        # чем value признака из amountPeriodDynamicsForFeaturesInClassMap
-        value = amountPeriodDynamicsForFeaturesInClassMap[classesList[0]][
-            feature]  # Для упрощения берем значение из первого класса
-        n = random.randint(value, 10 * value)
+        n = random.randint(COUNT_CATEGORICAL_FEATURES_START, COUNT_CATEGORICAL_FEATURES_END)
         possibleValuesForFeaturesMap[feature] = [f'v{i}' for i in range(n)]
     elif feature_type == 'Бинарный':
         # Всегда генерируем list из значения 0 и 1
@@ -80,7 +80,7 @@ for class_name in classesList:
         if feature in typesFeaturesMap['Категориальный']:
             for i in range(1, dynamicsMap + 1):
                 res = []
-                for j in range(i, len(possibleValues), dynamicsMap):
+                for j in range(i, len(possibleValues)):
                     res.append(possibleValues[j])
                 improvedMap[feature][i] = res
         elif feature in typesFeaturesMap['Бинарный']:
@@ -92,7 +92,7 @@ for class_name in classesList:
         elif feature in typesFeaturesMap['Перечислимый']:
             a, b = possibleValues  # входной отрезок
             segment_length = b - a  # длина отрезка
-            subsegment_length = segment_length / n # длина каждого подотрезка
+            subsegment_length = segment_length / n  # длина каждого подотрезка
             for i in range(1, dynamicsMap + 1):
                 # вычисляем границы текущего подотрезка
                 start = a + i * subsegment_length
@@ -153,10 +153,12 @@ for medical_history in medicalHistoryList:
                 PD = improvedAmountPeriodDynamicsForFeaturesInClassVGNGMap[class_name][feature][i]
                 DURATION_DYNAMICS_PERIOD = random.randint(PD[0], PD[1])
                 if DURATION_DYNAMICS_PERIOD < COUNT_OBS_MOMENT_END:
-                    COUNT_OBS_MOMENT_IN_DYNAMIC_PERIOD = random.randint(COUNT_OBS_MOMENT_START, DURATION_DYNAMICS_PERIOD)
+                    COUNT_OBS_MOMENT_IN_DYNAMIC_PERIOD = random.randint(COUNT_OBS_MOMENT_START,
+                                                                        DURATION_DYNAMICS_PERIOD)
                 else:
                     COUNT_OBS_MOMENT_IN_DYNAMIC_PERIOD = random.randint(COUNT_OBS_MOMENT_START, COUNT_OBS_MOMENT_END)
-                medicalHistoryMap[medical_history][class_name][feature][i] = {'Длительность ПД': DURATION_DYNAMICS_PERIOD, 'Число МН в ПД': COUNT_OBS_MOMENT_IN_DYNAMIC_PERIOD}
+                medicalHistoryMap[medical_history][class_name][feature][i] = {
+                    'Длительность ПД': DURATION_DYNAMICS_PERIOD, 'Число МН в ПД': COUNT_OBS_MOMENT_IN_DYNAMIC_PERIOD}
 
 # Выборка данных (ИБ, заболевание, признак, МН, значение в МН)
 data_sampling = {}
@@ -167,38 +169,44 @@ for medical_history in medicalHistoryList:
         data_sampling[medical_history][class_name] = {}
         for feature in medicalHistoryMap[medical_history][class_name]:
             data_sampling[medical_history][class_name][feature] = {}
-            generate_obs_moment_value = []
             generate_obs_moment: int = 0
             prev_generated_obs_moment: int = 0
             for j, value in enumerate(medicalHistoryMap[medical_history][class_name][feature].values()):
-                print(medicalHistoryMap[medical_history][class_name][feature])
                 duration_dynamic_period_from_medicalHistoryMap = value['Длительность ПД']
                 for i in range(1, value['Число МН в ПД'] + 1):
-                    #----------------------------------------------------------------
+                    generate_obs_moment_value = None
+                    # ----------------------------------------------------------------
+                    # todo: fix possible crash loop
                     while generate_obs_moment == prev_generated_obs_moment:
-                        if len(data_sampling[medical_history][class_name][feature]) < medicalHistoryMap[medical_history][class_name][feature][1]['Число МН в ПД']:
+                        if len(data_sampling[medical_history][class_name][feature]) < \
+                                medicalHistoryMap[medical_history][class_name][feature][1]['Число МН в ПД']:
                             generate_obs_moment = random.randint(1, duration_dynamic_period_from_medicalHistoryMap - 1)
                         else:
-                            generate_obs_moment = random.randint(prev_generated_obs_moment + 1, prev_generated_obs_moment + duration_dynamic_period_from_medicalHistoryMap - 1)
+                            generate_obs_moment = random.randint(prev_generated_obs_moment + 1,
+                                                                 prev_generated_obs_moment + duration_dynamic_period_from_medicalHistoryMap - 1)
                     # ----------------------------------------------------------------
+                    ZDP = improvedAmountPeriodDynamicsForFeaturesInClassMap[class_name][feature][j + 1]
                     if feature in typesFeaturesMap['Перечислимый']:
-                        print(improvedAmountPeriodDynamicsForFeaturesInClassMap[class_name][feature][j + 1])
-                        
+                        left = ZDP[0]
+                        right = ZDP[1]
+                        generate_obs_moment_value = random.randint(left, right)
                     elif feature in typesFeaturesMap['Категориальный']:
-                        pass
+                        generate_obs_moment_value = random.choice(ZDP)
                     elif feature in typesFeaturesMap['Бинарный']:
-                        pass
+                        generate_obs_moment_value = ZDP
                     # ----------------------------------------------------------------
                     prev_generated_obs_moment = generate_obs_moment
                     count += 1
-                    data_sampling[medical_history][class_name][feature][generate_obs_moment] = count
+                    data_sampling[medical_history][class_name][feature][generate_obs_moment] = generate_obs_moment_value
                     # ----------------------------------------------------------------
-            sorted_data_sampling_feature = {k: v for k, v in sorted(data_sampling[medical_history][class_name][feature].items(), key=lambda item: item[0])}
+            sorted_data_sampling_feature = {k: v for k, v in
+                                            sorted(data_sampling[medical_history][class_name][feature].items(),
+                                                   key=lambda item: item[0])}
             data_sampling[medical_history][class_name][feature] = sorted_data_sampling_feature
 
-print(medicalHistoryMap)
-print(data_sampling)
-print(improvedAmountPeriodDynamicsForFeaturesInClassMap)
+print('Nope crash loop')
+# print(medicalHistoryMap)
+# print(data_sampling)
 # ----------------------------------------------- Вывод -----------------------------------------------
 # Создаем новый файл
 workbook = Workbook()
@@ -339,6 +347,25 @@ for medical_history in medicalHistoryList:
                     count += 1
         count += COUNT_CHPD_END + 1
 
+# (ИБ, заболевание, признак, номер ПД, длительность ПД, число МН в ПД)
+mvd.cell(row=1, column=8).value = "Выборка данных (ИБ, заболевание, признак, МН, значение в МН)"
+mvd.merge_cells(start_row=1, start_column=8, end_row=1, end_column=12)
+mvd.cell(row=1, column=8).font = boldFont
+
+count: int = 0
+for medical_history in medicalHistoryList:
+    for class_name in classesList:
+        for i, feature in enumerate(featuresList):
+            for k, data in enumerate(data_sampling[medical_history][class_name][feature].items()):
+                row = i + 2 + count
+                cell_1 = mvd.cell(row=row, column=8, value=medical_history)
+                cell_2 = mvd.cell(row=row, column=9, value=class_name)
+                cell_3 = mvd.cell(row=row, column=10, value=feature)
+                cell_4 = mvd.cell(row=row, column=11, value=str(f'МН({data[0]})'))
+                cell_5 = mvd.cell(row=row, column=12, value=data[1])
+                if k != len(data_sampling[medical_history][class_name][feature].items()) - 1:
+                    count += 1
+        count += COUNT_CHPD_END + 1
 # ----------------------------------------------- OVER -----------------------------------------------
 # проходим по всем листам книги
 for worksheet in workbook.worksheets:
@@ -369,7 +396,7 @@ for worksheet in workbook.worksheets:
                 # то объединяем ячейки от start_cell до end_cell
                 if start_cell != end_cell:
                     worksheet.merge_cells(start_row=start_cell.row, start_column=start_cell.column,
-                                           end_row=end_cell.row, end_column=end_cell.column)
+                                          end_row=end_cell.row, end_column=end_cell.column)
                 # Обновляем переменные для начальной и конечной ячеек
                 start_cell = cell
                 end_cell = cell
@@ -378,7 +405,7 @@ for worksheet in workbook.worksheets:
         # Объединяем последнюю группу ячеек в столбце
         if start_cell != end_cell:
             worksheet.merge_cells(start_row=start_cell.row, start_column=start_cell.column,
-                                   end_row=end_cell.row, end_column=end_cell.column)
+                                  end_row=end_cell.row, end_column=end_cell.column)
 
 # Сохраняем файл
 workbook.save(filename="IAD.xlsx")
