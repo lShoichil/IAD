@@ -291,7 +291,8 @@ for class_name in classesList:
                                 map_for_alternatives['НГ'] = [random_vgng]
                                 map_for_alternatives['ЗДП'] = [set(list_fc_value[:-1]), list_fc_value[-1]]
                                 alternatives[key] = map_for_alternatives
-                        else:
+                        elif len(borders) == 3:
+                            prev_vgng: int = 0
                             for i in range(len(borders)):
                                 # Пропуск если граница ставится между одинаковыми элементами в рамках одной ИБ
                                 if first_column[class_name][feature][medical_history][borders[0][0]] == \
@@ -308,7 +309,7 @@ for class_name in classesList:
 
 
 
-                            alternatives[key] = map_for_alternatives
+                                    alternatives[key] = map_for_alternatives
             third_column[class_name][feature][medical_history] = alternatives
 
 
