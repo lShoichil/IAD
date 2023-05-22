@@ -1,7 +1,6 @@
 import copy
 import itertools
 import random
-from intervaltree import IntervalTree
 from openpyxl.styles import PatternFill, Border, Side, Font
 from openpyxl.workbook import Workbook
 
@@ -9,16 +8,16 @@ COUNT_CLASS: int = 2
 COUNT_FEATURE_INTO_CLASS: int = 6
 
 # TODO: Может упасть если COUNT_CATEGORICAL_FEATURES_START == 1
-COUNT_CATEGORICAL_FEATURES_START: int = 10
-COUNT_CATEGORICAL_FEATURES_END: int = 20
+COUNT_CATEGORICAL_FEATURES_START: int = 6
+COUNT_CATEGORICAL_FEATURES_END: int = 12
 
 COUNT_CHPD_START: int = 2
-COUNT_CHPD_END: int = 5
+COUNT_CHPD_END: int = 3
 
 LOWER_BOUND: int = 2
 UPPER_BOUND: int = 24
 
-COUNT_MEDICAL_HISTORY_FOR_ONE_CLASS: int = 5
+COUNT_MEDICAL_HISTORY_FOR_ONE_CLASS: int = 30
 COUNT_OBS_MOMENT_START: int = 1
 COUNT_OBS_MOMENT_END: int = 3
 
@@ -78,24 +77,24 @@ for class_name in classesList:
     improvedAmountPeriodDynamicsForFeaturesMap = {}
     for feature, dynamicsMap in amountPeriodDynamicsForFeaturesInClassMap[class_name].items():
         improvedMap[feature] = {}
-        possibleValues = possibleValuesForFeaturesMap[feature]
+        possibleValues = copy.deepcopy(possibleValuesForFeaturesMap[feature])
         if feature in typesFeaturesMap['Категориальный']:
-            for i in range(1, dynamicsMap + 1):
-                res = []
-                for j in range(i, len(possibleValues)):
-                    res.append(possibleValues[j])
-                improvedMap[feature][i] = res
-        elif feature in typesFeaturesMap['Бинарный']:
-            for i in range(1, dynamicsMap + 1):
-                if i % 2 == 0:
-                    improvedMap[feature][i] = possibleValues[0]
+            for i in range(dynamicsMap):
+                if i == 0:
+                    improvedMap[feature][i + 1] = random.sample(possibleValues, COUNT_CATEGORICAL_FEATURES_START // 2)
                 else:
-                    improvedMap[feature][i] = possibleValues[1]
+                    improvedMap[feature][i + 1] = [value for value in possibleValues[:random.randint(COUNT_CATEGORICAL_FEATURES_START, len(possibleValues))] if value not in improvedMap[feature][i]]
+        elif feature in typesFeaturesMap['Бинарный']:
+            for i in range(dynamicsMap):
+                if i % 2 == 0:
+                    improvedMap[feature][i + 1] = possibleValues[0]
+                else:
+                    improvedMap[feature][i + 1] = possibleValues[1]
         elif feature in typesFeaturesMap['Перечислимый']:
             a, b = possibleValues  # входной отрезок
             segment_length = b - a  # длина отрезка
             subsegment_length = segment_length / n  # длина каждого подотрезка
-            for i in range(1, dynamicsMap + 1):
+            for i in range(1,dynamicsMap + 1):
                 # вычисляем границы текущего подотрезка
                 start = a + i * subsegment_length
                 end = a + (i + 1) * subsegment_length
@@ -201,7 +200,9 @@ for medical_history in medicalHistoryList:
                     count += 1
                     data_sampling[medical_history][class_name][feature][generate_obs_moment] = generate_obs_moment_value
                     # ----------------------------------------------------------------
-            sorted_data_sampling_feature = {k: v for k, v in sorted(data_sampling[medical_history][class_name][feature].items(), key=lambda item: item[0])}
+            sorted_data_sampling_feature = {k: v for k, v in
+                                            sorted(data_sampling[medical_history][class_name][feature].items(),
+                                                   key=lambda item: item[0])}
             data_sampling[medical_history][class_name][feature] = sorted_data_sampling_feature
 
 print('Nope crash loop')
@@ -234,7 +235,7 @@ for class_name in classesList:
             second_column[class_name][feature][medical_history] = {}
             fc = copy.deepcopy(list(first_column[class_name][feature][medical_history].items()))
             pair = []
-            for i in range(len(fc)-1):
+            for i in range(len(fc) - 1):
                 pair.append((fc[i][0], fc[i + 1][0]))
             alternatives = {}
             a_i = 0
@@ -248,9 +249,9 @@ for class_name in classesList:
                     for a_j in range(len(combinations)):
                         # todo: исправить последнюю единицу на 0, после дебага
                         if a_i == 2:
-                            alternatives[f'Альтернатива {a_i}.{a_j + 1}'] = [pair[a_j], fc[len(fc) - 1][1]]
+                            alternatives[f'Альтернатива {a_i}.{a_j + 1}'] = [pair[a_j], fc[len(fc) - 1][0]]
                         else:
-                            alternatives[f'Альтернатива {a_i}.{a_j + 1}'] = [combinations[a_j], fc[len(fc) - 1][1]]
+                            alternatives[f'Альтернатива {a_i}.{a_j + 1}'] = [combinations[a_j], fc[len(fc) - 1][0]]
             second_column[class_name][feature][medical_history] = alternatives
 
 third_column = {}
@@ -266,53 +267,163 @@ for class_name in classesList:
             list_fc_keys = list(copy.deepcopy(first_column[class_name][feature][medical_history]).keys())
             list_fc_value = list(copy.deepcopy(first_column[class_name][feature][medical_history]).values())
             list_fc_items = list(copy.deepcopy(first_column[class_name][feature][medical_history]).items())
+            this_PD = 1
+            counter_true_alternative = 1
             for key, value in copy.deepcopy(second_column[class_name][feature][medical_history]).items():
                 map_for_alternatives = {}
+                num_PD = int(key[key.index(' ') + 1:key.index(
+                    '.')])  # Приходится искать точку и пробел для того чтобы получить правильный номер ПД
+                if num_PD != this_PD:
+                    this_PD = num_PD
+                    counter_true_alternative = 1
                 if key == 'Альтернатива 1.1':
                     # убирет повторы для каждого здп
-                    map_for_alternatives['ЗДП'] = [[set(list_fc_value)]]
+                    map_for_alternatives['ЗДП'] = [set(list_fc_value)]
                     map_for_alternatives['ВГ'] = [value]
                     map_for_alternatives['НГ'] = [value]
                     alternatives[key] = map_for_alternatives
                     continue
                 else:
-                    for borders in value[:-1]:
-                        # Если ставится одна граница
-                        if type(borders[0]) is int and type(borders[1]) is int:
-                            # Пропуск если граница ставится между одинаковыми элементами в рамках одной ИБ
-                            if first_column[class_name][feature][medical_history][borders[0]] == \
-                                    first_column[class_name][feature][medical_history][borders[1]]:
-                                # print(f'Не пропустил: {key} для {class_name} {feature} {medical_history}')
-                                map_for_alternatives = {}
-                                continue
-                            else:
-                                random_vgng = random.randint(borders[0], borders[1] - 1)
-                                map_for_alternatives['ВГ'] = [random_vgng]
-                                map_for_alternatives['НГ'] = [random_vgng]
-                                map_for_alternatives['ЗДП'] = [set(list_fc_value[:-1]), list_fc_value[-1]]
-                                alternatives[key] = map_for_alternatives
-                        else:
-                            for i in range(len(borders)):
-                                # Пропуск если граница ставится между одинаковыми элементами в рамках одной ИБ
-                                if first_column[class_name][feature][medical_history][borders[0][0]] == \
-                                        first_column[class_name][feature][medical_history][borders[0][1]] or \
-                                        first_column[class_name][feature][medical_history][borders[1][0]] == \
-                                        first_column[class_name][feature][medical_history][borders[1][1]]:
-                                    # print(f'Не пропустил: {key} для {class_name} {feature} {medical_history}')
-                                    map_for_alternatives = {}
-                                    continue
-                                else:
-                                    now_vgng: int = 0
-                                    random_vgng_list = []
-                                    zdp_list = []
-
-
-
-                            alternatives[key] = map_for_alternatives
+                    flag_for_true_alternative = True
+                    val = value[:-1]
+                    list_index_val, list_set_val, list_border = [], [], []
+                    buf = 0
+                    border = 0
+                    if type(val[0][0]) is tuple:
+                        val = val[0]
+                    for i in range(len(val)):
+                        key_1, key_2 = val[i]
+                        list_border.append(key_1 - border)
+                        border = (key_1 + key_2) // 2  # Граница между периодами
+                        list_index_val.append([buf, list_fc_keys.index(key_1) + 1])  # Точно + 1?
+                        buf = list_fc_keys.index(key_2)
+                        if i == len(val) - 1:
+                            list_index_val.append([buf, len(list_fc_value)])
+                            list_border.append(list_fc_keys[-1] - border)
+                    for i in range(len(list_index_val)):
+                        ind_1, ind_2 = list_index_val[i]
+                        list_set_val.append(set(list_fc_value[ind_1: ind_2]))
+                    for i in range(1, len(list_set_val)):
+                        mas_1 = list_set_val[i - 1]
+                        mas_2 = list_set_val[i]
+                        if mas_1.intersection(mas_2):
+                            flag_for_true_alternative = False
+                            break
+                    if flag_for_true_alternative:
+                        map_for_alternatives['ЗДП'] = copy.deepcopy(list_set_val)
+                        map_for_alternatives['ВГ'] = copy.deepcopy(list_border)
+                        map_for_alternatives['НГ'] = copy.deepcopy(list_border)
+                        key_for_true_alternative = f'Альтернатива {this_PD}.{counter_true_alternative}'
+                        alternatives[
+                            key_for_true_alternative] = map_for_alternatives  # можно подставить key, если хочется видеть пробелы в нейминге альтернатив
+                        counter_true_alternative += 1
             third_column[class_name][feature][medical_history] = alternatives
 
+fifth_column = {}
+variant_num = 1
+variant_num_2 = 1
+for class_name in classesList:
+    fifth_column[class_name] = {}
+    fifth_column[class_name] = copy.deepcopy(second_column[class_name])
+    for feature in featuresList:
+        fifth_column[class_name][feature] = {}
+        alternatives = {}
+        IB_alter = {}
+        for pd_generation in range(1, 10):
+            alternatives[pd_generation] = {}
+            alternatives[pd_generation]["ЗДП"] = []
+            alternatives[pd_generation]["ВГ"] = []
+            alternatives[pd_generation]["НГ"] = []
+        for key, value in copy.deepcopy(third_column[class_name][feature][medicalHistoryList[0]]).items():
+            num_PD = int(key[key.index(' ') + 1:key.index('.')])
+            alternatives[num_PD]["ЗДП"].append(value["ЗДП"])
+            alternatives[num_PD]["ВГ"].append(value["ВГ"])
+            alternatives[num_PD]["НГ"].append(value["НГ"])
+        for medical_history in medicalHistoryList[1:]:  # Первая история болезни записывается полностью
+            IB_alter = {}
+            for pd_generation in range(1, 10):
+                IB_alter[pd_generation] = {}
+                IB_alter[pd_generation]["ЗДП"] = []
+                IB_alter[pd_generation]["ВГ"] = []
+                IB_alter[pd_generation]["НГ"] = []
+            for key, value in copy.deepcopy(third_column[class_name][feature][medical_history]).items():
+                num_PD = int(key[key.index(' ') + 1:key.index('.')])
+                IB_alter[num_PD]["ЗДП"].append(value["ЗДП"])
+                IB_alter[num_PD]["ВГ"].append(value["ВГ"])
+                IB_alter[num_PD]["НГ"].append(value["НГ"])
+            alternatives[1]["ЗДП"][0][0].update(IB_alter[1]["ЗДП"][0][0])
+            alternatives[1]["ВГ"][0][0] = max(IB_alter[1]["ВГ"][0][0], alternatives[1]["ВГ"][0][0])
+            alternatives[1]["НГ"][0][0] = min(IB_alter[1]["НГ"][0][0], alternatives[1]["НГ"][0][0])
+            for pd_iter in range(2, 10):
+                ZDP_List = []
+                VG_List = []
+                NG_List = []
+                for i in range(len(alternatives[pd_iter]["ЗДП"])):
+                    for j in range(len(IB_alter[pd_iter]["ЗДП"])):
+                        flag = True
+                        list_iter_alternatives, vg_alternatives, ng_alternatives = [], [], []
+                        for iter_PD_from_alternatives in range(len(alternatives[pd_iter]["ЗДП"][i])):
+                            list_iter_alternatives.append(
+                                alternatives[pd_iter]["ЗДП"][i][iter_PD_from_alternatives].union(
+                                    IB_alter[pd_iter]["ЗДП"][j][iter_PD_from_alternatives]))
+                            vg_alternatives.append(max(IB_alter[pd_iter]["ВГ"][j][iter_PD_from_alternatives],
+                                                       alternatives[pd_iter]["ВГ"][i][iter_PD_from_alternatives]))
+                            ng_alternatives.append(min(IB_alter[pd_iter]["НГ"][j][iter_PD_from_alternatives],
+                                                       alternatives[pd_iter]["НГ"][i][iter_PD_from_alternatives]))
+                        for iter_PD_from_alternatives in range(1, len(list_iter_alternatives)):
+                            mas_1 = list_iter_alternatives[iter_PD_from_alternatives - 1]
+                            mas_2 = list_iter_alternatives[iter_PD_from_alternatives]
+                            if mas_1.intersection(mas_2):
+                                flag = False
+                                break
+                        if flag:
+                            ZDP_List.append(list_iter_alternatives)
+                            VG_List.append(vg_alternatives)
+                            NG_List.append(ng_alternatives)
+                alternatives[pd_iter]["ЗДП"] = copy.deepcopy(ZDP_List)
+                alternatives[pd_iter]["ВГ"] = copy.deepcopy(VG_List)
+                alternatives[pd_iter]["НГ"] = copy.deepcopy(NG_List)
+        fifth_column[class_name][feature] = copy.deepcopy(alternatives)
+# print(fifth_column)
+# print(improvedAmountPeriodDynamicsForFeaturesInClassMap)
 
-print('')
+last_column = {}
+for class_name in classesList:
+    last_column[class_name] = {}
+    for feature in featuresList:
+        counter_all_alternative = 0
+        counter_true_alternative = 0
+        row_ter = 1
+        last_column[class_name][feature] = {}
+        for pd_iter in range(1, 10):
+            size_pd = len(fifth_column[class_name][feature][pd_iter]['ЗДП'])
+            if size_pd == 0:
+                continue
+            counter_all_alternative += size_pd
+            if len(improvedAmountPeriodDynamicsForFeaturesInClassMap[class_name][feature].keys()) == pd_iter:
+                counter_true_alternative += size_pd
+                for iter_alternative in range(len(fifth_column[class_name][feature][pd_iter]['ЗДП'])):
+                    for iter_from_pd in range(pd_iter):
+                        last_column[class_name][feature][row_ter] = {}
+                        last_column[class_name][feature][row_ter]["Класс"] = class_name.split()[1]
+                        last_column[class_name][feature][row_ter]["Признак"] = feature.split()[1]
+                        last_column[class_name][feature][row_ter]["ЧПД"] = pd_iter
+                        last_column[class_name][feature][row_ter]["ПД"] = iter_from_pd + 1
+                        if type(improvedAmountPeriodDynamicsForFeaturesInClassMap[class_name][feature][iter_from_pd + 1]) is tuple:
+                            left, right = improvedAmountPeriodDynamicsForFeaturesInClassMap[class_name][feature][iter_from_pd + 1]
+                            last_column[class_name][feature][row_ter]["ЗДП МБЗ"] = "[" + str(left) + ", " + str(right) + "]"
+                        elif type(improvedAmountPeriodDynamicsForFeaturesInClassMap[class_name][feature][iter_from_pd + 1]) is int:
+                            last_column[class_name][feature][row_ter]["ЗДП МБЗ"] = improvedAmountPeriodDynamicsForFeaturesInClassMap[class_name][feature][iter_from_pd + 1]
+                        else:
+                            last_column[class_name][feature][row_ter]["ЗДП МБЗ"] = ', '.join(improvedAmountPeriodDynamicsForFeaturesInClassMap[class_name][feature][iter_from_pd + 1])
+                        last_column[class_name][feature][row_ter]["ЗДП ИФБЗ"] = fifth_column[class_name][feature][pd_iter]['ЗДП'][iter_alternative][iter_from_pd]
+                        ngmbz, vgmbz = improvedAmountPeriodDynamicsForFeaturesInClassVGNGMap[class_name][feature][iter_from_pd + 1]
+                        ngIfbz = fifth_column[class_name][feature][pd_iter]['НГ'][iter_alternative][iter_from_pd]
+                        vgIfbz = fifth_column[class_name][feature][pd_iter]['ВГ'][iter_alternative][iter_from_pd]
+                        last_column[class_name][feature][row_ter]["ВГ"] = vgmbz - vgIfbz
+                        last_column[class_name][feature][row_ter]["НГ"] = ngmbz - ngIfbz
+                        row_ter += 1
+
 # ----------------------------------------------- Вывод -----------------------------------------------
 # Создаем новый файл
 workbook = Workbook()
@@ -472,6 +583,60 @@ for medical_history in medicalHistoryList:
                 if k != len(data_sampling[medical_history][class_name][feature].items()) - 1:
                     count += 1
         count += COUNT_CHPD_END + 1
+# ----------------------------------------------- ИФБЗ -----------------------------------------------
+import json
+
+# Запись переменной first_column в файл
+with open('ifbz_first_column.txt', 'w') as file:
+    for class_name in classesList:
+        print(f'{class_name}', file=file)
+        for feature in featuresList:
+            print(f'  {feature}', file=file)
+            for medical_history in medicalHistoryList:
+                print(f'    {medical_history}', file=file)
+                for key, value in first_column[class_name][feature][medical_history].items():
+                    print(f'      {key} - {value}', file=file)
+
+# Запись переменной second_column в файл
+with open('ifbz_second_column.txt', 'w') as file:
+    for class_name in classesList:
+        print(f'{class_name}', file=file)
+        for feature in featuresList:
+            print(f'  {feature}', file=file)
+            for medical_history in medicalHistoryList:
+                print(f'    {medical_history}', file=file)
+                for key, value in second_column[class_name][feature][medical_history].items():
+                    print(f'      {key} - {value}', file=file)
+
+# Запись переменной third_column в файл
+with open('ifbz_third_column.txt', 'w') as file:
+    for class_name in classesList:
+        print(f'{class_name}', file=file)
+        for feature in featuresList:
+            print(f'  {feature}', file=file)
+            for medical_history in medicalHistoryList:
+                print(f'    {medical_history}', file=file)
+                for name_alternative, value_alternative in third_column[class_name][feature][medical_history].items():
+                    print(f'      {name_alternative}', file=file)
+                    for zdp, vg, ng in zip(third_column[class_name][feature][medical_history][name_alternative]['ЗДП'], third_column[class_name][feature][medical_history][name_alternative]['ВГ'], third_column[class_name][feature][medical_history][name_alternative]['НГ']):
+                        print(f'        ЗДП: {zdp} - ВГ: {vg} - НГ: {ng}', file=file)
+                    
+
+# Запись переменной fifth_column в файл
+with open('ifbz_fifth_column.txt', 'w') as file:
+    for class_name in classesList:
+        print(f'{class_name}', file=file)
+        for feature in featuresList:
+            print(f'  {feature}', file=file)
+            for key, value in fifth_column[class_name][feature].items():
+                if value['ЗДП'] == []:
+                    continue
+                else:
+                    print(f'    ЗДП с {key} периодом(-ов/-ами) динамики', file=file)
+                    for zdp, vg, ng in zip(value['ЗДП'], value['ВГ'], value['НГ']):
+                        print(f'      ЗДП: {zdp} - ВГ: {vg} - НГ: {ng}', file=file)
+# ----------------------------------------------- VS -----------------------------------------------
+
 # ----------------------------------------------- OVER -----------------------------------------------
 # проходим по всем листам книги
 for worksheet in workbook.worksheets:
@@ -515,3 +680,5 @@ for worksheet in workbook.worksheets:
 
 # Сохраняем файл
 workbook.save(filename="IAD.xlsx")
+
+print(last_column)
